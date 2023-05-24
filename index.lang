@@ -1,0 +1,3 @@
+let x: type = (a * 2) * (b + 1) - (c / 3);
+let y: othertype = 2 * x;
+test(a, b, c(c(c(x))), 2 + 2);
