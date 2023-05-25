@@ -44,24 +44,24 @@ proc parse*(tokens: seq[Token]): Ast =
 
     template next = index += 1
     template moreTokens: bool = index < tokens.len
+
+    template hasToken(token: Token): bool = currentToken() == token
    
     proc expectToken(token: Token) =
-        if currentToken() != token:
+        if not hasToken(token):
             error(fmt"invalid token: {currentToken()} at {index}")
 
     proc consumeToken(token: Token) =
         expectToken(token)
         next()
     
-    template hasToken(token: Token): bool = currentToken() == token
-
     template op(s: string): Token = Token(tokenType: TokenType.Operator, value: s)
     template punc(s: string): Token = Token(tokenType: TokenType.Punctuation, value: s)
     template alpha(s: string): Token = Token(tokenType: TokenType.Alpha, value: s)
 
     proc parseJoined[T](parser: proc (): T, sepToken: Token, endToken: Token): seq[T] =
         var first = true
-        while currentToken() != endToken:
+        while not hasToken(endToken):
         
             if first:
                 first = false
@@ -99,7 +99,7 @@ proc parse*(tokens: seq[Token]): Ast =
     proc parseAssignment(): Ast =
         consumeToken(alpha"let")
         let lhs = parseId()
-        if currentToken() == punc"(":
+        if hasToken(punc"("):
             next()
             let params = parseJoined(parseIdTypePair, punc",", punc")")
             next()
@@ -108,7 +108,7 @@ proc parse*(tokens: seq[Token]): Ast =
             consumeToken(op"=")
             consumeToken(punc"{")
             var body: seq[Ast]
-            while currentToken() != punc"}":
+            while not hasToken(punc"}"):
                 body.add(parseLine())
             next()
             result = Ast(
@@ -118,7 +118,7 @@ proc parse*(tokens: seq[Token]): Ast =
                 returnType: returnType,
                 body: body
             )
-        elif currentToken() == op":":
+        elif hasToken(op":"):
             next()
             let lhsType = parseId()
             consumeToken(op"=")
@@ -134,7 +134,7 @@ proc parse*(tokens: seq[Token]): Ast =
     proc parseExpression(): Ast =
         var firstExpression: Ast
 
-        if currentToken() == punc"(":
+        if hasToken(punc"("):
             next()
             firstExpression = parseExpression()
             consumeToken(punc")")
@@ -157,7 +157,7 @@ proc parse*(tokens: seq[Token]): Ast =
                 ),
                 params: @[firstExpression, secondExpression]
             )
-        elif currentToken() == punc"(":
+        elif hasToken(punc"("):
             next()
 
             let params = parseJoined(parseExpression, punc",", punc")")
