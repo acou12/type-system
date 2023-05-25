@@ -43,9 +43,9 @@ proc lexSingleByFunction(
         else: false
 
 
-let lexOp = lexMultipleByFunction(proc (c: char): bool = c in { '+', '-', '/', '*', '=', ':' }, TokenType.Operator)
+let lexOp = lexMultipleByFunction(proc (c: char): bool = c in { '+', '-', '/', '*', '=', ':', '<', '>' }, TokenType.Operator)
 let lexAlpha = lexMultipleByFunction(proc (c: char): bool = c in { 'a'..'z', 'A'..'Z', '-' }, TokenType.Alpha)
-let lexPunc = lexSingleByFunction(proc (c: char): bool = c in { '[', ']', '(', ')', ',', ';' }, TokenType.Punctuation)
+let lexPunc = lexSingleByFunction(proc (c: char): bool = c in { '[', ']', '(', ')', '{', '}', ',', ';' }, TokenType.Punctuation)
 let lexNum = lexMultipleByFunction(proc (c: char): bool = c in { '0'..'9' }, TokenType.Number)
 let lexWhite = lexMultipleByFunction(proc (c: char): bool = c in { ' ', '\n' }, TokenType.White)
 

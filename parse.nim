@@ -1,13 +1,15 @@
 import lex
 import strformat
+import strutils
 import parseutils
 
-type AstType = enum
+type AstType* = enum
     Program,
     Assignment,
     FunctionCall,
     Id,
     NumberLiteral,
+    Function,
 
 type Ast* = ref object
     case astType: AstType
@@ -24,6 +26,11 @@ type Ast* = ref object
         name: string
     of AstType.NumberLiteral:
         number: int
+    of AstType.Function:
+        functionName: Ast
+        functionParams: seq[tuple[name: Ast, `type`: Ast]]
+        returnType: Ast
+        body: seq[Ast]
 
 proc parse*(tokens: seq[Token]): Ast =
     var index = 0
@@ -45,12 +52,30 @@ proc parse*(tokens: seq[Token]): Ast =
     proc consumeToken(token: Token) =
         expectToken(token)
         next()
+    
+    template hasToken(token: Token): bool = currentToken() == token
+
+    template op(s: string): Token = Token(tokenType: TokenType.Operator, value: s)
+    template punc(s: string): Token = Token(tokenType: TokenType.Punctuation, value: s)
+    template alpha(s: string): Token = Token(tokenType: TokenType.Alpha, value: s)
+
+    proc parseJoined[T](parser: proc (): T, sepToken: Token, endToken: Token): seq[T] =
+        var first = true
+        while currentToken() != endToken:
+        
+            if first:
+                first = false
+            else:
+                consumeToken(sepToken)
+
+            result.add(parser())
 
     proc parseProgram(): Ast
     proc parseLine(): Ast
     proc parseAssignment(): Ast
     proc parseExpression(): Ast
     proc parseId(): Ast
+    proc parseIdTypePair(): tuple[name: Ast, `type`: Ast]
     proc parseNum(): Ast
 
     proc parseProgram(): Ast =
@@ -65,38 +90,60 @@ proc parse*(tokens: seq[Token]): Ast =
         )
 
     proc parseLine(): Ast =
-        if currentToken() == Token(tokenType: TokenType.Alpha, value: "let"):
+        if hasToken(alpha"let"):
             result = parseAssignment()
         else:
             result = parseExpression()
-            consumeToken(Token(tokenType: TokenType.Punctuation, value: ";"))
+            consumeToken(punc";")
 
     proc parseAssignment(): Ast =
-        consumeToken(Token(tokenType: TokenType.Alpha, value: "let"))
+        consumeToken(alpha"let")
         let lhs = parseId()
-        consumeToken(Token(tokenType: TokenType.Operator, value: ":"))
-        let lhsType = parseId()
-        consumeToken(Token(tokenType: TokenType.Operator, value: "="))
-        let rhs = parseExpression()
-        consumeToken(Token(tokenType: TokenType.Punctuation, value: ";"))
-        result = Ast(
-            astType: AstType.Assignment,
-            lhs: lhs,
-            lhsType: lhsType,
-            rhs: rhs,
-        )
-
+        if currentToken() == punc"(":
+            next()
+            let params = parseJoined(parseIdTypePair, punc",", punc")")
+            next()
+            consumeToken(op":")
+            let returnType = parseId()
+            consumeToken(op"=")
+            consumeToken(punc"{")
+            var body: seq[Ast]
+            while currentToken() != punc"}":
+                body.add(parseLine())
+            next()
+            result = Ast(
+                astType: AstType.Function,
+                functionName: lhs,
+                functionParams: params,
+                returnType: returnType,
+                body: body
+            )
+        elif currentToken() == op":":
+            next()
+            let lhsType = parseId()
+            consumeToken(op"=")
+            let rhs = parseExpression()
+            consumeToken(punc";")
+            result = Ast(
+                astType: AstType.Assignment,
+                lhs: lhs,
+                lhsType: lhsType,
+                rhs: rhs,
+            )
+        
     proc parseExpression(): Ast =
         var firstExpression: Ast
 
-        if currentToken() == Token(tokenType: TokenType.Punctuation, value: "("):
+        if currentToken() == punc"(":
             next()
             firstExpression = parseExpression()
-            consumeToken(Token(tokenType: TokenType.Punctuation, value: ")"))
+            consumeToken(punc")")
         elif currentToken().tokenType == TokenType.Number:
             firstExpression = parseNum()
         elif currentToken().tokenType == TokenType.Alpha:
             firstExpression = parseId()
+        else:
+            error(fmt"invalid expression at {index}");
 
         if currentToken().tokenType == TokenType.Operator:
             let operator = currentToken()
@@ -110,17 +157,10 @@ proc parse*(tokens: seq[Token]): Ast =
                 ),
                 params: @[firstExpression, secondExpression]
             )
-        elif currentToken() == Token(tokenType: TokenType.Punctuation, value: "("):
+        elif currentToken() == punc"(":
             next()
 
-            var params: seq[Ast]
-            var firstParam = true
-            while currentToken() != Token(tokenType: TokenType.Punctuation, value: ")"):
-                if not firstParam:
-                    consumeToken(Token(tokenType: TokenType.Punctuation, value: ","))
-                else:
-                    firstParam = false
-                params.add(parseExpression())
+            let params = parseJoined(parseExpression, punc",", punc")")
 
             result = Ast(
                 astType: FunctionCall,
@@ -128,7 +168,7 @@ proc parse*(tokens: seq[Token]): Ast =
                 params: params
             )
 
-            consumeToken(Token(tokenType: TokenType.Punctuation, value: ")"))
+            consumeToken(punc")")
         else: 
             result = firstExpression
 
@@ -140,6 +180,9 @@ proc parse*(tokens: seq[Token]): Ast =
             name: idToken.value
         )
         next()
+
+    proc parseIdTypePair(): tuple[name: Ast, `type`: Ast] =
+        (parseId(), (consumeToken(op":"); parseId()))
 
     proc parseNum(): Ast =
         let numToken = currentToken()
@@ -153,7 +196,7 @@ proc parse*(tokens: seq[Token]): Ast =
     
     result = parseProgram()
 
-proc `$`*(ast: Ast): string =
+func `$`*(ast: Ast): string =
     case ast.astType:
     of AstType.Program:
         for line in ast.lines:
@@ -162,16 +205,13 @@ proc `$`*(ast: Ast): string =
     of AstType.Assignment:
         result = fmt"(let ({ast.lhs}: {ast.lhsType}) {ast.rhs})"
     of AstType.FunctionCall:
-        result = fmt"({ast.function} "
-        var first = true
-        for param in ast.params:
-            if first:
-                first = false
-            else:
-                result &= " "
-            result &= $param
-        result &= ")"
+        result = fmt"""({ast.function} {ast.params.join(" ")})"""
     of AstType.Id:
         result = ast.name
     of AstType.NumberLiteral:
         result = $ast.number
+    of AstType.Function:
+        var paramStrings: seq[string]
+        for (name, `type`) in ast.functionParams:
+            paramStrings.add(fmt"{name}: {`type`}")
+        result = fmt"""(defn {ast.functionName} [{paramStrings.join(" ")}] {ast.body.join(" ")})"""

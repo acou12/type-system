@@ -1,3 +1,8 @@
-let x: type = (a * 2) * (b + 1) - (c / 3);
-let y: othertype = 2 * x;
-test(a, b, c(c(c(x))), 2 + 2);
+let fact(x: int): Bruh = {
+    if (x <= 0, 
+        1, 
+        x * fact(x - 1)
+    );
+}
+
+echo(fact(10000));
