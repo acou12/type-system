@@ -1,8 +1,4 @@
-let fact(x: int): Bruh = {
-    if (x <= 0, 
-        1, 
-        x * fact(x - 1)
-    );
+let print(x: number): void;
+let f(x: number): number = {
+    print(x * 2);
 }
-
-echo(fact(10000));

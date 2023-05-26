@@ -1,7 +1,25 @@
 import lex
+import tables
 import strformat
 import strutils
+import sequtils
+import sugar
 import parseutils
+
+type TypeExpressionType* = enum
+    Number,
+    Function,
+    Void
+
+type TypeExpression* = ref object
+    case typeExpressionType: TypeExpressionType
+    of Number: discard
+    of Function:
+        params: seq[TypeExpression]
+        returnType: TypeExpression
+    of Void: discard
+
+let voidType = TypeExpression(typeExpressionType: TypeExpressionType.Void)
 
 type AstType* = enum
     Program,
@@ -10,8 +28,11 @@ type AstType* = enum
     Id,
     NumberLiteral,
     Function,
+    Type,
+    Any,
 
 type Ast* = ref object
+    typeExpression: TypeExpression
     case astType: AstType
     of AstType.Program:
         lines: seq[Ast]
@@ -31,15 +52,33 @@ type Ast* = ref object
         functionParams: seq[tuple[name: Ast, `type`: Ast]]
         returnType: Ast
         body: seq[Ast]
+    of AstType.Type:
+        typeType: TypeExpression
+    of AstType.Any: discard
+
+let anyAst = Ast(astType: AstType.Any)
+
+func `$`*(typeExpression: TypeExpression): string
 
 proc parse*(tokens: seq[Token]): Ast =
     var index = 0
+
+    var typeTable = initTable[string, TypeExpression]()
 
     proc currentToken: Token = tokens[index]
 
     proc error(message: string) =
         echo message
-        echo getStackTrace()
+        var s = ""
+        for i, token in pairs(tokens):
+            if i == index:
+                s &= ">>> "
+                s &= token.value
+                s &= " <<< "
+            else:
+                s &= token.value
+                s &= " "
+        echo s
         quit(1)
 
     template next = index += 1
@@ -77,6 +116,7 @@ proc parse*(tokens: seq[Token]): Ast =
     proc parseId(): Ast
     proc parseIdTypePair(): tuple[name: Ast, `type`: Ast]
     proc parseNum(): Ast
+    proc parseType(): Ast
 
     proc parseProgram(): Ast =
         var lines: seq[Ast]
@@ -87,6 +127,9 @@ proc parse*(tokens: seq[Token]): Ast =
         result = Ast(
             astType: AstType.Program,
             lines: lines,
+            typeExpression: TypeExpression(
+                typeExpressionType: TypeExpressionType.Void
+            )
         )
 
     proc parseLine(): Ast =
@@ -95,7 +138,7 @@ proc parse*(tokens: seq[Token]): Ast =
         else:
             result = parseExpression()
             consumeToken(punc";")
-
+        
     proc parseAssignment(): Ast =
         consumeToken(alpha"let")
         let lhs = parseId()
@@ -104,33 +147,66 @@ proc parse*(tokens: seq[Token]): Ast =
             let params = parseJoined(parseIdTypePair, punc",", punc")")
             next()
             consumeToken(op":")
-            let returnType = parseId()
-            consumeToken(op"=")
-            consumeToken(punc"{")
+            let returnType = parseType()
             var body: seq[Ast]
-            while not hasToken(punc"}"):
-                body.add(parseLine())
-            next()
+            if hasToken(op"="):
+                next()
+                consumeToken(punc"{")
+                while not hasToken(punc"}"):
+                    body.add(parseLine())
+                next()
+            elif hasToken(punc";"):
+                body = @[anyAst]
+                next()
+            else:
+                error("invalid assignment.")
+
+            var paramTypes: seq[TypeExpression]
+            for (_, `type`) in params:
+                paramTypes.add(`type`.typeType)
+
+            typeTable[lhs.name] = TypeExpression(
+                typeExpressionType: TypeExpressionType.Function,
+                params: paramTypes,
+                returnType: returnType.typeType
+            )
+
             result = Ast(
                 astType: AstType.Function,
                 functionName: lhs,
                 functionParams: params,
                 returnType: returnType,
-                body: body
+                body: body,
+                typeExpression: voidType,
             )
         elif hasToken(op":"):
             next()
-            let lhsType = parseId()
-            consumeToken(op"=")
-            let rhs = parseExpression()
-            consumeToken(punc";")
+            let lhsType = parseType()
+            var rhs: Ast
+            if hasToken(op"="):
+                next()
+                rhs = parseExpression()
+            elif hasToken(punc";"):
+                next()
+                rhs = anyAst
+            else:
+                error("invalid assignment.")
             result = Ast(
                 astType: AstType.Assignment,
                 lhs: lhs,
                 lhsType: lhsType,
                 rhs: rhs,
+                typeExpression: voidType,
             )
-        
+
+    proc functionApplicationType(f: TypeExpression, params: seq[TypeExpression]): TypeExpression =
+        if f.typeExpressionType != TypeExpressionType.Function:
+            error("not a function.")
+        for index, param in pairs(params):
+            if param != f.params[index]:
+                error(fmt"{param} should be a {f.params[index]}")
+        f.returnType
+
     proc parseExpression(): Ast =
         var firstExpression: Ast
 
@@ -149,13 +225,15 @@ proc parse*(tokens: seq[Token]): Ast =
             let operator = currentToken()
             next()
             let secondExpression = parseExpression()
+            let operatorAst = Ast(
+                astType: Id,
+                name: operator.value
+            )
             result = Ast(
                 astType: FunctionCall,
-                function: Ast(
-                    astType: Id,
-                    name: operator.value
-                ),
-                params: @[firstExpression, secondExpression]
+                function: operatorAst,
+                params: @[firstExpression, secondExpression],
+                # typeExpression: functionType(),
             )
         elif hasToken(punc"("):
             next()
@@ -182,7 +260,7 @@ proc parse*(tokens: seq[Token]): Ast =
         next()
 
     proc parseIdTypePair(): tuple[name: Ast, `type`: Ast] =
-        (parseId(), (consumeToken(op":"); parseId()))
+        (parseId(), (consumeToken(op":"); parseType()))
 
     proc parseNum(): Ast =
         let numToken = currentToken()
@@ -193,8 +271,38 @@ proc parse*(tokens: seq[Token]): Ast =
             number: number,
         )
         next()
-    
+
+    proc parseType(): Ast =
+        if hasToken(alpha"number"):
+            next()
+            result = Ast(astType: AstType.Type, typeType: TypeExpression(typeExpressionType: TypeExpressionType.Number))
+        elif hasToken(alpha"void"):
+            next()
+            result = Ast(astType: AstType.Type, typeType: TypeExpression(typeExpressionType: TypeExpressionType.Void))
+        elif hasToken(alpha"fn"):
+            next()
+            consumeToken(punc"(")
+            let params = parseJoined(parseType, punc",", punc")").map(ast => ast.typeType)
+            next()
+            consumeToken(op":")
+            let returnType = parseType().typeType
+            result = Ast(
+                astType: AstType.Type, 
+                typeType: TypeExpression(
+                    typeExpressionType: TypeExpressionType.Function,
+                    params: params,
+                    returnType: returnType))
+        else:
+            error(fmt"invalid type: {currentToken()}")
+
     result = parseProgram()
+    echo typeTable
+
+func `$`*(typeExpression: TypeExpression): string =
+    case typeExpression.typeExpressionType:
+    of TypeExpressionType.Number: "number"
+    of TypeExpressionType.Function: fmt"""({typeExpression.params.join(" ")}) -> ({typeExpression.returnType})""" # TODO
+    of TypeExpressionType.Void: "void"
 
 func `$`*(ast: Ast): string =
     case ast.astType:
@@ -214,4 +322,8 @@ func `$`*(ast: Ast): string =
         var paramStrings: seq[string]
         for (name, `type`) in ast.functionParams:
             paramStrings.add(fmt"{name}: {`type`}")
-        result = fmt"""(defn {ast.functionName} [{paramStrings.join(" ")}] {ast.body.join(" ")})"""
+        result = fmt"""(defn {ast.functionName} [{paramStrings.join(" ")}] -> [{ast.returnType}] {ast.body.join(" ")})"""
+    of AstType.Type:
+        result = $ast.typeType
+    of AstType.Any:
+        result = "any"
