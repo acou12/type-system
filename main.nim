@@ -3,7 +3,7 @@ import parse
 import sugar
 
 proc main =
-    let entryPointContents = readFile("index.lang")
+    let entryPointContents = readFile("src/prelude.lang") & readFile("src/index.lang")
 
     var tokens = collect(
         for token in lex(entryPointContents):

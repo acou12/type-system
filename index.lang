@@ -1,2 +1,0 @@
-let f: fn (number): fn (number): number;
-let x: number;

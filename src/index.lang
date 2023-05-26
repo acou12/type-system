@@ -1,0 +1,4 @@
+let f(x: number): number = {
+    result = x;
+}
+let x: number;

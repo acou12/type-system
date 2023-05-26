@@ -82,7 +82,7 @@ proc parse*(tokens: seq[Token]): Ast =
 
     var typeTable = initTable[string, TypeExpression]()
 
-    proc currentToken: Token = tokens[index]
+    template currentToken: Token = tokens[index]
 
     proc error(message: string) =
         echo message
@@ -96,6 +96,7 @@ proc parse*(tokens: seq[Token]): Ast =
                 s &= token.value
                 s &= " "
         echo s
+        echo getStackTrace()
         quit(1)
 
     template next = index += 1
@@ -115,7 +116,18 @@ proc parse*(tokens: seq[Token]): Ast =
     template punc(s: string): Token = Token(tokenType: TokenType.Punctuation, value: s)
     template alpha(s: string): Token = Token(tokenType: TokenType.Alpha, value: s)
 
-    proc parseJoined[T](parser: proc (): T, sepToken: Token, endToken: Token): seq[T] =
+    proc parseJoined(parser: proc (): Ast, sepToken: Token, endToken: Token): seq[Ast] =
+        var first = true
+        while not hasToken(endToken):
+        
+            if first:
+                first = false
+            else:
+                consumeToken(sepToken)
+
+            result.add(parser())
+
+    proc parseJoinedPairs(parser: proc (): tuple[name: Ast, `type`: Ast], sepToken: Token, endToken: Token): seq[tuple[name: Ast, `type`: Ast]] =
         var first = true
         while not hasToken(endToken):
         
@@ -159,9 +171,11 @@ proc parse*(tokens: seq[Token]): Ast =
         consumeToken(alpha"let")
         if currentToken().tokenType == TokenType.Alpha:
             let lhs = parseBoundId()
+            if typeTable.hasKey(lhs.name):
+                error(fmt"{lhs.name} is already defined.")
             if hasToken(punc"("):
                 next()
-                let params = parseJoined(parseIdTypePair, punc",", punc")")
+                let params = parseJoinedPairs(parseIdTypePair, punc",", punc")")
                 next()
                 consumeToken(op":")
                 let returnType = parseType()
@@ -171,6 +185,8 @@ proc parse*(tokens: seq[Token]): Ast =
                         error(fmt"{name} is already defined.")
                     else:
                         typeTable[name.name] = `type`.typeType
+                
+                typeTable["result"] = returnType.typeType
 
                 var body: seq[Ast]
                 if hasToken(op"="):
@@ -187,6 +203,8 @@ proc parse*(tokens: seq[Token]): Ast =
 
                 for (name, `type`) in params:
                     typeTable.del(name.name)
+
+                typeTable.del("result")
 
                 var paramTypes: seq[TypeExpression]
                 for (_, `type`) in params:
@@ -213,6 +231,9 @@ proc parse*(tokens: seq[Token]): Ast =
                 if hasToken(op"="):
                     next()
                     rhs = parseExpression()
+                    if lhsType.typeType !~= rhs.typeExpression:
+                        error(fmt"a {rhs.typeExpression} is being assigned to {lhs.name}: {lhsType}")
+                    consumeToken(punc";")
                 elif hasToken(punc";"):
                     next()
                     rhs = anyAst
@@ -278,8 +299,6 @@ proc parse*(tokens: seq[Token]): Ast =
             next()
 
             let params = parseJoined(parseExpression, punc",", punc")")
-
-            echo getStackTrace()
 
             let appType = functionApplicationType(firstExpression.typeExpression, params.map(param => param.typeExpression))
 
@@ -347,6 +366,10 @@ proc parse*(tokens: seq[Token]): Ast =
                     typeExpressionType: TypeExpressionType.Function,
                     params: params,
                     returnType: returnType))
+        elif hasToken(punc"("):
+            next()
+            result = parseType()
+            consumeToken(punc")")
         else:
             error(fmt"invalid type: {currentToken()}")
 
