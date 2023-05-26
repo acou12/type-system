@@ -1,4 +1,2 @@
-let print(x: number): void;
-let f(x: number): number = {
-    print(x * 2);
-}
+let f: fn (number): fn (number): number;
+let x: number;
