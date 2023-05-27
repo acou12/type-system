@@ -25,6 +25,7 @@ let voidType = TypeExpression(typeExpressionType: TypeExpressionType.Void)
 type AstType* = enum
     Program,
     Assignment,
+    Reassignment,
     FunctionCall,
     Id,
     NumberLiteral,
@@ -41,6 +42,9 @@ type Ast* = ref object
         lhs: Ast
         lhsType: Ast
         rhs: Ast
+    of AstType.Reassignment:
+        reassignmentLhs: Ast
+        reassignmentRhs: Ast
     of AstType.FunctionCall:
         function: Ast
         params: seq[Ast]
@@ -141,6 +145,9 @@ proc parse*(tokens: seq[Token]): Ast =
     proc parseProgram(): Ast
     proc parseLine(): Ast
     proc parseAssignment(): Ast
+    proc parseVariableAssignment(lhs: Ast): Ast
+    proc parseFunctionAssignment(lhs: Ast): Ast
+    proc parseOperatorAssignment(): Ast
     proc parseExpression(): Ast
     proc parseBoundId(): Ast
     proc parseId(): Ast
@@ -174,83 +181,153 @@ proc parse*(tokens: seq[Token]): Ast =
             if typeTable.hasKey(lhs.name):
                 error(fmt"{lhs.name} is already defined.")
             if hasToken(punc"("):
-                next()
-                let params = parseJoinedPairs(parseIdTypePair, punc",", punc")")
-                next()
-                consumeToken(op":")
-                let returnType = parseType()
-
-                for (name, `type`) in params:
-                    if typeTable.hasKey(name.name):
-                        error(fmt"{name} is already defined.")
-                    else:
-                        typeTable[name.name] = `type`.typeType
-                
-                typeTable["result"] = returnType.typeType
-
-                var body: seq[Ast]
-                if hasToken(op"="):
-                    next()
-                    consumeToken(punc"{")
-                    while not hasToken(punc"}"):
-                        body.add(parseLine())
-                    next()
-                elif hasToken(punc";"):
-                    body = @[anyAst]
-                    next()
-                else:
-                    error("invalid assignment.")
-
-                for (name, `type`) in params:
-                    typeTable.del(name.name)
-
-                typeTable.del("result")
-
-                var paramTypes: seq[TypeExpression]
-                for (_, `type`) in params:
-                    paramTypes.add(`type`.typeType)
-
-                typeTable[lhs.name] = TypeExpression(
-                    typeExpressionType: TypeExpressionType.Function,
-                    params: paramTypes,
-                    returnType: returnType.typeType
-                )
-
-                result = Ast(
-                    astType: AstType.Function,
-                    functionName: lhs,
-                    functionParams: params,
-                    returnType: returnType,
-                    body: body,
-                    typeExpression: voidType,
-                )
+                result = parseFunctionAssignment(lhs)
             elif hasToken(op":"):
-                next()
-                let lhsType = parseType()
-                var rhs: Ast
-                if hasToken(op"="):
-                    next()
-                    rhs = parseExpression()
-                    if lhsType.typeType !~= rhs.typeExpression:
-                        error(fmt"a {rhs.typeExpression} is being assigned to {lhs.name}: {lhsType}")
-                    consumeToken(punc";")
-                elif hasToken(punc";"):
-                    next()
-                    rhs = anyAst
-                else:
-                    error("invalid assignment.")
-
-                typeTable[lhs.name] = lhsType.typeType
-
-                result = Ast(
-                    astType: AstType.Assignment,
-                    lhs: lhs,
-                    lhsType: lhsType,
-                    rhs: rhs,
-                    typeExpression: voidType,
-                )
+                result = parseVariableAssignment(lhs)
+        elif hasToken(punc"("):
+            result = parseOperatorAssignment()
         else:
             error("invalid assignment.")
+        
+    proc parseVariableAssignment(lhs: Ast): Ast =
+        next() # skip the ":"
+        let lhsType = parseType()
+        var rhs: Ast
+        if hasToken(op"="):
+            next()
+            rhs = parseExpression()
+            if lhsType.typeType !~= rhs.typeExpression:
+                error(fmt"a {rhs.typeExpression} is being assigned to {lhs.name}: {lhsType}")
+            consumeToken(punc";")
+        elif hasToken(punc";"):
+            next()
+            rhs = anyAst
+        else:
+            error("invalid assignment.")
+
+        typeTable[lhs.name] = lhsType.typeType
+
+        result = Ast(
+            astType: AstType.Assignment,
+            lhs: lhs,
+            lhsType: lhsType,
+            rhs: rhs,
+            typeExpression: voidType,
+        )
+
+    proc parseFunctionAssignment(lhs: Ast): Ast =
+        next()
+        let params = parseJoinedPairs(parseIdTypePair, punc",", punc")")
+        next()
+        consumeToken(op":")
+        let returnType = parseType()
+
+        for (name, `type`) in params:
+            if typeTable.hasKey(name.name):
+                error(fmt"{name} is already defined.")
+            else:
+                typeTable[name.name] = `type`.typeType
+        
+        typeTable["result"] = returnType.typeType
+
+        var body: seq[Ast]
+        if hasToken(op"="):
+            next()
+            consumeToken(punc"{")
+            while not hasToken(punc"}"):
+                body.add(parseLine())
+            next()
+        elif hasToken(punc";"):
+            body = @[anyAst]
+            next()
+        else:
+            error("invalid assignment.")
+
+        for (name, `type`) in params:
+            typeTable.del(name.name)
+
+        typeTable.del("result")
+
+        var paramTypes: seq[TypeExpression]
+        for (_, `type`) in params:
+            paramTypes.add(`type`.typeType)
+
+        typeTable[lhs.name] = TypeExpression(
+            typeExpressionType: TypeExpressionType.Function,
+            params: paramTypes,
+            returnType: returnType.typeType
+        )
+
+        result = Ast(
+            astType: AstType.Function,
+            functionName: lhs,
+            functionParams: params,
+            returnType: returnType,
+            body: body,
+            typeExpression: voidType,
+        )
+
+    proc parseOperatorAssignment(): Ast =
+
+        consumeToken(punc"(")
+        let first = parseIdTypePair()
+        let (firstId, firstType) = first
+        consumeToken(punc")")
+
+        let operator = currentToken()
+        if operator.tokenType != TokenType.Operator:
+            error("that should be an operator.")
+        next()
+
+        consumeToken(punc"(")
+        let second = parseIdTypePair()
+        let (secondId, secondType) = second
+        consumeToken(punc")")
+
+        if typeTable.hasKey(firstId.name):
+            error(fmt"{firstId.name} is already defined")
+        if typeTable.hasKey(secondId.name):
+            error(fmt"{secondId.name} is already defined")
+        
+        typeTable[firstId.name] = firstType.typeType
+        typeTable[secondId.name] = secondType.typeType
+
+        consumeToken(op":")
+        let returnType = parseType()
+
+        typeTable["result"] = returnType.typeType
+
+        var body: seq[Ast]
+        if hasToken(op"="):
+            next()
+            consumeToken(punc"{")
+            while not hasToken(punc"}"):
+                body.add(parseLine())
+            next()
+        elif hasToken(punc";"):
+            body = @[anyAst]
+            next()
+        else:
+            error("invalid assignment.")
+        
+        typeTable.del(firstId.name)
+        typeTable.del(secondId.name)
+        typeTable.del("result")
+
+        typeTable[operator.value] = TypeExpression(
+            typeExpressionType: TypeExpressionType.Function,
+            params: @[firstType.typeType, secondType.typeType],
+            returnType: returnType.typeType
+        )
+
+        result = Ast(
+            astType: AstType.Function,
+            functionName: Ast(astType: AstType.Id, name: operator.value),
+            functionParams: @[first, second],
+            returnType: returnType,
+            body: body,
+            typeExpression: voidType,
+        )
 
     proc functionApplicationType(f: TypeExpression, params: seq[TypeExpression]): TypeExpression =
         if f.typeExpressionType != TypeExpressionType.Function:
@@ -276,24 +353,41 @@ proc parse*(tokens: seq[Token]): Ast =
         else:
             error(fmt"invalid expression at {index}");
 
-        if currentToken().tokenType == TokenType.Operator:
-            let operator = currentToken()
+        if hasToken(op"="):
             next()
             let secondExpression = parseExpression()
 
-            todo("operators do not type check")
+            if firstExpression.typeExpression !~= secondExpression.typeExpression:
+                error(fmt"{firstExpression.typeExpression} != {secondExpression.typeExpression}")
+            
+            result = Ast(
+                astType: AstType.Reassignment,
+                reassignmentLhs: firstExpression,
+                reassignmentRhs: secondExpression,
+                typeExpression: voidType,
+            )
+        elif currentToken().tokenType == TokenType.Operator:
+            let operator = currentToken()
+            if not typeTable.hasKey(operator.value):
+                error(fmt"{operator.value} is not defined.")
+            next()
+            let secondExpression = parseExpression()
 
             let operatorAst = Ast(
                 astType: Id,
                 name: operator.value,
-                # typeExpression: 
+                typeExpression: typeTable[operator.value],
             )
+
+            let params = @[firstExpression, secondExpression]
+
+            let appType = functionApplicationType(operatorAst.typeExpression, params.map(param => param.typeExpression))
 
             result = Ast(
                 astType: FunctionCall,
                 function: operatorAst,
-                params: @[firstExpression, secondExpression],
-                # typeExpression: functionType(),
+                params: params,
+                typeExpression: appType,
             )
         elif hasToken(punc"("):
             next()
@@ -374,7 +468,6 @@ proc parse*(tokens: seq[Token]): Ast =
             error(fmt"invalid type: {currentToken()}")
 
     result = parseProgram()
-    echo typeTable
 
 func `$`*(typeExpression: TypeExpression): string =
     case typeExpression.typeExpressionType:
@@ -390,6 +483,8 @@ func `$`*(ast: Ast): string =
             result &= "\n"
     of AstType.Assignment:
         result = fmt"(let ({ast.lhs}: {ast.lhsType}) {ast.rhs})"
+    of AstType.Reassignment:
+        result = fmt"(relet {ast.reassignmentLhs} {ast.reassignmentRhs})"
     of AstType.FunctionCall:
         result = fmt"""({ast.function} {ast.params.join(" ")})"""
     of AstType.Id:

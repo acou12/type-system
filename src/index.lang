@@ -1,4 +1,6 @@
-let f(x: number): number = {
-    result = x;
+let main(): void = {
+    let x: number;
+    let y: number;
+    x = y;
+    y = x;
 }
-let x: number;
