@@ -1,2 +1,6 @@
-let f: fn (number): (fn (string): string);
-let s: string = f(10)("a");
+let (s: string) ++ (t: string): string;
+let main(): string = {
+    let s: string = "a" ++ "b";
+    print(s);
+    result = s;
+}

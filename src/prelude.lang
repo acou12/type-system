@@ -1,1 +1,1 @@
-let print(x: number): void;
+let print(x: string): void;
