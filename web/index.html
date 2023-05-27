@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="/web/compile.js"></script>
+    <title>askdjkalsjd</title>
+</head>
+<body>
+    <textarea name="in" id="in" cols="30" rows="10"></textarea>
+    <textarea name="out" id="out" cols="30" rows="10"></textarea>
+    <button>Compile</button>
+    <script>
+        const correctedCompile = (source) => compile(source)
+        let sourceCodeTextarea = document.querySelector('#in')
+        let outputTextarea = document.querySelector('#out')
+        let button = document.querySelector('button')
+        button.addEventListener('click', () => {
+            outputTextarea.value = correctedCompile(sourceCodeTextarea.value)
+            eval(outputTextarea.value)
+        })
+    </script>
+</body>
+</html>

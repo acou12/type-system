@@ -3,8 +3,10 @@ import parse
 
 import sugar
 
-proc main =
-    let entryPointContents = readFile("src/prelude.lang") & readFile("src/index.lang")
+proc compile*(code: cstring): cstring {.exportc.} =
+    const prelude = static: readFile("src/prelude.lang")
+    let entryPointContents = prelude & $code
+    echo entryPointContents
 
     var tokens = collect(
         for token in lex(entryPointContents):
@@ -13,10 +15,4 @@ proc main =
 
     let ast = parse(tokens)
 
-    var file: File
-    if open(file, "out.js", fmWrite):
-        file.write($ast)
-    else:
-        echo "error writing."
-
-main()
+    result = $ast
