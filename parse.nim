@@ -190,7 +190,7 @@ proc parse*(tokens: seq[Token]): Ast =
                 error(fmt"{lhs.name} is already defined.")
             if hasToken(punc"("):
                 result = parseFunctionAssignment(lhs)
-            elif hasToken(op":"):
+            elif hasToken(op":") or hasToken(op"="):
                 result = parseVariableAssignment(lhs)
         elif hasToken(punc"("):
             result = parseOperatorAssignment()
@@ -198,13 +198,15 @@ proc parse*(tokens: seq[Token]): Ast =
             error("invalid assignment.")
         
     proc parseVariableAssignment(lhs: Ast): Ast =
-        next() # skip the ":"
-        let lhsType = parseType()
+        var lhsType: Ast
+        if hasToken(op":"):
+            next()
+            lhsType = parseType()
         var rhs: Ast
         if hasToken(op"="):
             next()
             rhs = parseExpression()
-            if lhsType.typeType !~= rhs.typeExpression:
+            if not lhsType.isNil and lhsType.typeType !~= rhs.typeExpression:
                 error(fmt"a {rhs.typeExpression} is being assigned to {lhs.name}: {lhsType}")
             consumeToken(punc";")
         elif hasToken(punc";"):
@@ -213,12 +215,12 @@ proc parse*(tokens: seq[Token]): Ast =
         else:
             error("invalid assignment.")
 
-        typeTable[lhs.name] = lhsType.typeType
+        typeTable[lhs.name] = rhs.typeExpression
 
         result = Ast(
             astType: AstType.Assignment,
             lhs: lhs,
-            lhsType: lhsType,
+            lhsType: if lhsType.isNil: Ast(astType: AstType.Type, typeType: rhs.typeExpression) else: lhsType,
             rhs: rhs,
             typeExpression: voidType,
         )

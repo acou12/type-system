@@ -1,6 +1,3 @@
-let (s: string) ++ (t: string): string;
-let main(): string = {
-    let s: string = "a" ++ "b";
-    print(s);
-    result = s;
-}
+let f(x: number): string;
+let x: number = 1;
+let y = f(1);
