@@ -1,6 +1,2 @@
-let main(): void = {
-    let x: number;
-    let y: number;
-    x = y;
-    y = x;
-}
+let f: fn (number): (fn (string): string);
+let s: string = f(10)("a");

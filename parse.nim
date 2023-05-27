@@ -9,12 +9,14 @@ import sugar
 
 type TypeExpressionType* = enum
     Number,
+    String,
     Function,
     Void
 
 type TypeExpression* = ref object
     case typeExpressionType: TypeExpressionType
     of Number: discard
+    of String: discard
     of Function:
         params: seq[TypeExpression]
         returnType: TypeExpression
@@ -29,6 +31,7 @@ type AstType* = enum
     FunctionCall,
     Id,
     NumberLiteral,
+    StringLiteral,
     Function,
     Type,
     Any,
@@ -52,6 +55,8 @@ type Ast* = ref object
         name: string
     of AstType.NumberLiteral:
         number: int
+    of AstType.StringLiteral:
+        stringValue: string
     of AstType.Function:
         functionName: Ast
         functionParams: seq[tuple[name: Ast, `type`: Ast]]
@@ -70,6 +75,8 @@ func `~=`(te1: TypeExpression, te2: TypeExpression): bool =
     case te1.typeExpressionType:
     of TypeExpressionType.Number:
         result = te2.typeExpressionType == TypeExpressionType.Number
+    of TypeExpressionType.String:
+        result = te2.typeExpressionType == TypeExpressionType.String
     of TypeExpressionType.Void:
         result = te2.typeExpressionType == TypeExpressionType.Void
     of TypeExpressionType.Function:
@@ -153,6 +160,7 @@ proc parse*(tokens: seq[Token]): Ast =
     proc parseId(): Ast
     proc parseIdTypePair(): tuple[name: Ast, `type`: Ast]
     proc parseNum(): Ast
+    proc parseString(): Ast
     proc parseType(): Ast
 
     proc parseProgram(): Ast =
@@ -339,6 +347,10 @@ proc parse*(tokens: seq[Token]): Ast =
                 error(fmt"{param} should be a {f.params[index]}")
         f.returnType
 
+    # todo: for repeated calls
+    # e.g., f(10)("a")(6) doesn't work right now
+    # proc parseCalls(function: Ast): Ast
+
     proc parseExpression(): Ast =
         var firstExpression: Ast
 
@@ -348,6 +360,8 @@ proc parse*(tokens: seq[Token]): Ast =
             consumeToken(punc")")
         elif currentToken().tokenType == TokenType.Number:
             firstExpression = parseNum()
+        elif currentToken().tokenType == TokenType.String:
+            firstExpression = parseString()
         elif currentToken().tokenType == TokenType.Alpha:
             firstExpression = parseId()
         else:
@@ -440,10 +454,24 @@ proc parse*(tokens: seq[Token]): Ast =
         )
         next()
 
+    proc parseString(): Ast =
+        let stringToken = currentToken()
+        result = Ast(
+            astType: StringLiteral,
+            stringValue: stringToken.value,
+            typeExpression: TypeExpression(
+                typeExpressionType: TypeExpressionType.String,
+            ),
+        )
+        next()
+
     proc parseType(): Ast =
         if hasToken(alpha"number"):
             next()
             result = Ast(astType: AstType.Type, typeType: TypeExpression(typeExpressionType: TypeExpressionType.Number))
+        elif hasToken(alpha"string"):
+            next()
+            result = Ast(astType: AstType.Type, typeType: TypeExpression(typeExpressionType: TypeExpressionType.String))
         elif hasToken(alpha"void"):
             next()
             result = Ast(astType: AstType.Type, typeType: TypeExpression(typeExpressionType: TypeExpressionType.Void))
@@ -472,6 +500,7 @@ proc parse*(tokens: seq[Token]): Ast =
 func `$`*(typeExpression: TypeExpression): string =
     case typeExpression.typeExpressionType:
     of TypeExpressionType.Number: "number"
+    of TypeExpressionType.String: "string"
     of TypeExpressionType.Function: fmt"""({typeExpression.params.join(" ")}) -> ({typeExpression.returnType})""" # TODO
     of TypeExpressionType.Void: "void"
 
@@ -491,6 +520,8 @@ func `$`*(ast: Ast): string =
         result = ast.name
     of AstType.NumberLiteral:
         result = $ast.number
+    of AstType.StringLiteral:
+        result = "\"" & ast.stringValue & "\""
     of AstType.Function:
         var paramStrings: seq[string]
         for (name, `type`) in ast.functionParams:

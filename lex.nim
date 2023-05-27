@@ -6,6 +6,7 @@ type TokenType* = enum
     Punctuation,
     Number,
     White,
+    String,
 
 type Token* = object
     tokenType*: TokenType
@@ -49,6 +50,25 @@ let lexPunc = lexSingleByFunction(proc (c: char): bool = c in { '[', ']', '(', '
 let lexNum = lexMultipleByFunction(proc (c: char): bool = c in { '0'..'9' }, TokenType.Number)
 let lexWhite = lexMultipleByFunction(proc (c: char): bool = c in { ' ', '\n' }, TokenType.White)
 
+proc lexString(source: string, index: var int, tokens: var seq[Token]): bool =
+    if source[index] == '"':
+        result = true
+        inc index
+        let startIndex = index
+        while index < source.len and source[index] != '"':
+            inc index
+        if index >= source.len:
+            echo "unmatched string."
+            quit(1)
+        tokens.add(
+            Token(
+                value: source[startIndex..<index], tokenType: TokenType.String
+            )
+        )
+        inc index
+    else:
+        result = false
+
 proc lex*(source: string): seq[Token] =
     let lexers = @[
         lexOp,
@@ -56,6 +76,7 @@ proc lex*(source: string): seq[Token] =
         lexPunc,
         lexNum,
         lexWhite,
+        lexString,
     ]
     var index = 0
     while index < source.len:
