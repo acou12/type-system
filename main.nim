@@ -1,5 +1,6 @@
 import lex
 import parse
+
 import sugar
 
 proc main =
@@ -12,6 +13,10 @@ proc main =
 
     let ast = parse(tokens)
 
-    echo ast
+    var file: File
+    if open(file, "out.js", fmWrite):
+        file.write($ast)
+    else:
+        echo "error writing."
 
 main()

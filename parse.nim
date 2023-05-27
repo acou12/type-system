@@ -1,5 +1,4 @@
 import lex
-import utils
 
 import tables
 import strformat
@@ -35,36 +34,40 @@ type AstType* = enum
     Function,
     Type,
     Any,
+    Extern,
 
 type Ast* = ref object
-    typeExpression: TypeExpression
-    case astType: AstType
+    typeExpression*: TypeExpression
+    case astType*: AstType
     of AstType.Program:
-        lines: seq[Ast]
+        lines*: seq[Ast]
     of AstType.Assignment:
-        lhs: Ast
-        lhsType: Ast
-        rhs: Ast
+        lhs*: Ast
+        lhsType*: Ast
+        rhs*: Ast
     of AstType.Reassignment:
-        reassignmentLhs: Ast
-        reassignmentRhs: Ast
+        reassignmentLhs*: Ast
+        reassignmentRhs*: Ast
     of AstType.FunctionCall:
-        function: Ast
-        params: seq[Ast]
+        function*: Ast
+        params*: seq[Ast]
     of AstType.Id:
-        name: string
+        name*: string
     of AstType.NumberLiteral:
-        number: int
+        number*: int
     of AstType.StringLiteral:
-        stringValue: string
+        stringValue*: string
     of AstType.Function:
-        functionName: Ast
-        functionParams: seq[tuple[name: Ast, `type`: Ast]]
-        returnType: Ast
-        body: seq[Ast]
+        functionName*: Ast
+        functionParams*: seq[tuple[name: Ast, `type`: Ast]]
+        returnType*: Ast
+        body*: seq[Ast]
     of AstType.Type:
-        typeType: TypeExpression
+        typeType*: TypeExpression
     of AstType.Any: discard
+    of AstType.Extern:
+        externCode*: Ast
+        externType*: Ast
 
 let anyAst = Ast(astType: AstType.Any)
 
@@ -157,6 +160,7 @@ proc parse*(tokens: seq[Token]): Ast =
     proc parseFunctionAssignment(lhs: Ast): Ast
     proc parseOperatorAssignment(): Ast
     proc parseExpression(): Ast
+    proc parseExtern(): Ast
     proc parseBoundId(): Ast
     proc parseId(): Ast
     proc parseIdTypePair(): tuple[name: Ast, `type`: Ast]
@@ -373,6 +377,8 @@ proc parse*(tokens: seq[Token]): Ast =
             firstExpression = parseString()
         elif currentToken().tokenType == TokenType.Alpha:
             firstExpression = parseId()
+        elif hasToken(op"@"):
+            firstExpression = parseExtern()
         else:
             error(fmt"invalid expression at {index}");
 
@@ -429,6 +435,21 @@ proc parse*(tokens: seq[Token]): Ast =
             consumeToken(punc")")
         else: 
             result = firstExpression
+    
+    proc parseExtern(): Ast =
+        next()
+        consumeToken(punc"{")
+        let externCode = parseString()
+        consumeToken(op":")
+        let externType = parseType()
+        consumeToken(punc"}")
+        
+        result = Ast(
+            astType: AstType.Extern,
+            externCode: externCode,
+            externType: externType,
+            typeExpression: externType.typeType,
+        )
 
     proc parseBoundId(): Ast =
         let idToken = currentToken()
@@ -513,6 +534,11 @@ func `$`*(typeExpression: TypeExpression): string =
     of TypeExpressionType.Function: fmt"""({typeExpression.params.join(" ")}) -> ({typeExpression.returnType})""" # TODO
     of TypeExpressionType.Void: "void"
 
+proc encodeChar(c: char): string =
+    let numString = ord(c).intToStr
+    for c in numString:
+        result &= cast[char]((cast[byte](c) - cast[byte]('0')) + cast[byte]('a'))
+
 func `$`*(ast: Ast): string =
     case ast.astType:
     of AstType.Program:
@@ -520,24 +546,38 @@ func `$`*(ast: Ast): string =
             result &= $line
             result &= "\n"
     of AstType.Assignment:
-        result = fmt"(let ({ast.lhs}: {ast.lhsType}) {ast.rhs})"
+        result = fmt"let {ast.lhs} = {ast.rhs};"
     of AstType.Reassignment:
-        result = fmt"(relet {ast.reassignmentLhs} {ast.reassignmentRhs})"
+        result = fmt"{ast.reassignmentLhs} = {ast.reassignmentRhs}"
     of AstType.FunctionCall:
-        result = fmt"""({ast.function} {ast.params.join(" ")})"""
+        if ast.function.name == "js" and ast.params[0].astType == AstType.StringLiteral:
+            result = fmt"""{ast.params[0].stringValue}"""
+        else:
+            result = fmt"""{ast.function}({ast.params.join(", ")})"""
     of AstType.Id:
-        result = ast.name
+        for c in ast.name:
+            if not (('a' <= c and c <= 'z') or ('A' <= c and c <= 'Z')):
+                result &= "__op__" & encodeChar(c)
+            else:
+                result &= c
     of AstType.NumberLiteral:
         result = $ast.number
     of AstType.StringLiteral:
         result = "\"" & ast.stringValue & "\""
     of AstType.Function:
         var paramStrings: seq[string]
-        for (name, `type`) in ast.functionParams:
-            paramStrings.add(fmt"{name}: {`type`}")
-        result = fmt"""(defn {ast.functionName} [{paramStrings.join(" ")}] -> [{ast.returnType}] {ast.body.join(" ")})"""
+        for (name, _) in ast.functionParams:
+            paramStrings.add(fmt"{name}")
+        result = fmt"""function {ast.functionName}({paramStrings.join(", ")})""" 
+        result &= "{"
+        result &= "let result;"
+        for line in ast.body:
+            result &= $line & ";"
+        result &= "return result;"
+        result &= "}"
     of AstType.Type:
-        result = $ast.typeType
+        result = "";
     of AstType.Any:
-        result = "any"
-
+        result = ""
+    of AstType.Extern:
+        result = ast.externCode.stringValue

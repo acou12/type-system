@@ -1,5 +1,9 @@
-let (first: fn(number): string) *** (second: number): number = {
-    print(first(second));
+let decuple(x: number): number = {
+    result = x * 10;
 }
 
-let f = toString *** 2;
+let applyTwice(f: fn (number): number, x: number): number = {
+    result = f(f(x));
+}
+
+printNum(applyTwice(decuple, 3));

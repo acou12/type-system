@@ -1,6 +1,7 @@
-let print(x: string): void;
-let toString(x: number): string;
-let (x: number) * (y: number): number;
-let (x: number) + (y: number): number;
-let (x: number) - (y: number): number;
-let (x: number) / (y: number): number;
+let printNum = @{"console.log" : fn (number): void};
+let printStr = @{"console.log" : fn (string): void};
+let toString = @{"x => x.toString()" : fn (number): string};
+let `*` = @{"(x, y) => x * y": fn (number, number): number};
+let `/` = @{"(x, y) => x / y": fn (number, number): number};
+let `+` = @{"(x, y) => x + y": fn (number, number): number};
+let `-` = @{"(x, y) => x - y": fn (number, number): number};
