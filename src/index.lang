@@ -1,3 +1,5 @@
-let f(x: number): string;
-let x: number = 1;
-let y = f(1);
+let (first: fn(number): string) *** (second: number): number = {
+    print(first(second));
+}
+
+let f = toString *** 2;

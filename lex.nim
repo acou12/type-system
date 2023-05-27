@@ -69,6 +69,26 @@ proc lexString(source: string, index: var int, tokens: var seq[Token]): bool =
     else:
         result = false
 
+proc lexBackquotedId(source: string, index: var int, tokens: var seq[Token]): bool =
+    if source[index] == '`':
+        result = true
+        inc index
+        let startIndex = index
+        while index < source.len and source[index] != '`':
+            inc index
+        if index >= source.len:
+            echo "unmatched backquote id."
+            quit(1)
+        tokens.add(
+            Token(
+                value: source[startIndex..<index], tokenType: TokenType.Alpha
+            )
+        )
+        inc index
+    else:
+        result = false
+
+
 proc lex*(source: string): seq[Token] =
     let lexers = @[
         lexOp,
@@ -77,6 +97,7 @@ proc lex*(source: string): seq[Token] =
         lexNum,
         lexWhite,
         lexString,
+        lexBackquotedId,
     ]
     var index = 0
     while index < source.len:

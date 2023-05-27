@@ -71,6 +71,7 @@ let anyAst = Ast(astType: AstType.Any)
 func `$`*(typeExpression: TypeExpression): string
 func `$`*(ast: Ast): string
 
+# structural type equivalence
 func `~=`(te1: TypeExpression, te2: TypeExpression): bool =
     case te1.typeExpressionType:
     of TypeExpressionType.Number:
@@ -80,7 +81,7 @@ func `~=`(te1: TypeExpression, te2: TypeExpression): bool =
     of TypeExpressionType.Void:
         result = te2.typeExpressionType == TypeExpressionType.Void
     of TypeExpressionType.Function:
-        result = te2.typeExpressionType == TypeExpressionType.Void and 
+        result = te2.typeExpressionType == TypeExpressionType.Function and 
                  te2.returnType ~= te1.returnType
         for (p1, p2) in zip(te1.params, te2.params):
             result = result and p1 ~= p2
@@ -226,6 +227,9 @@ proc parse*(tokens: seq[Token]): Ast =
         )
 
     proc parseFunctionAssignment(lhs: Ast): Ast =
+        if typeTable.hasKey(lhs.name):
+            error(fmt"{lhs.name} is already defined")
+
         next()
         let params = parseJoinedPairs(parseIdTypePair, punc",", punc")")
         next()
@@ -287,6 +291,9 @@ proc parse*(tokens: seq[Token]): Ast =
         let operator = currentToken()
         if operator.tokenType != TokenType.Operator:
             error("that should be an operator.")
+        if typeTable.hasKey(operator.value):
+            error(fmt"{operator.value} is already defined")
+
         next()
 
         consumeToken(punc"(")
@@ -533,3 +540,4 @@ func `$`*(ast: Ast): string =
         result = $ast.typeType
     of AstType.Any:
         result = "any"
+

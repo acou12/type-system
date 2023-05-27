@@ -1,1 +1,6 @@
 let print(x: string): void;
+let toString(x: number): string;
+let (x: number) * (y: number): number;
+let (x: number) + (y: number): number;
+let (x: number) - (y: number): number;
+let (x: number) / (y: number): number;
