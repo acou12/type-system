@@ -6,6 +6,7 @@ type TokenType* = enum
     Punctuation,
     Number,
     White,
+    Underscore,
     String,
 
 type Token* = object
@@ -49,6 +50,7 @@ let lexAlpha = lexMultipleByFunction(proc (c: char): bool = c in { 'a'..'z', 'A'
 let lexPunc = lexSingleByFunction(proc (c: char): bool = c in { '[', ']', '(', ')', '{', '}', ',', ';' }, TokenType.Punctuation)
 let lexNum = lexMultipleByFunction(proc (c: char): bool = c in { '0'..'9' }, TokenType.Number)
 let lexWhite = lexMultipleByFunction(proc (c: char): bool = c in { ' ', '\n' }, TokenType.White)
+let lexUnderscore = lexSingleByFunction(proc (c: char): bool = c in { '_' }, TokenType.Underscore)
 
 proc lexString(source: string, index: var int, tokens: var seq[Token]): bool =
     if source[index] == '"':
@@ -96,6 +98,7 @@ proc lex*(source: string): seq[Token] =
         lexPunc,
         lexNum,
         lexWhite,
+        lexUnderscore,
         lexString,
         lexBackquotedId,
     ]

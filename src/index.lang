@@ -1,9 +1,5 @@
-let decuple(x: number): number = {
-    result = x * 10;
-}
+let thing(f: (number, number) -> number): void = {
+    printNum(f(10, 10));
+};
 
-let applyTwice(f: fn (number): number, x: number): number = {
-    result = f(f(x));
-}
-
-printNum(applyTwice(decuple, 3));
+thing({ x: number, y: number: number => result = x * y; });

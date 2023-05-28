@@ -32,6 +32,7 @@ type AstType* = enum
     NumberLiteral,
     StringLiteral,
     Function,
+    AnonFunction,
     Type,
     Any,
     Extern,
@@ -62,6 +63,10 @@ type Ast* = ref object
         functionParams*: seq[tuple[name: Ast, `type`: Ast]]
         returnType*: Ast
         body*: seq[Ast]
+    of AstType.AnonFunction:
+        anonFunctionParams*: seq[tuple[name: Ast, `type`: Ast]]
+        anonReturnType*: Ast
+        anonBody*: seq[Ast]
     of AstType.Type:
         typeType*: TypeExpression
     of AstType.Any: discard
@@ -97,7 +102,7 @@ proc parse*(tokens: seq[Token]): Ast =
 
     var typeTable = initTable[string, TypeExpression]()
 
-    template currentToken: Token = tokens[index]
+    template currentToken(useIndex = index): Token = tokens[useINdex]
 
     proc error(message: string) =
         echo message
@@ -117,11 +122,11 @@ proc parse*(tokens: seq[Token]): Ast =
     template next = index += 1
     template moreTokens: bool = index < tokens.len
 
-    template hasToken(token: Token): bool = currentToken() == token
+    template hasToken(token: Token, useIndex = index): bool = currentToken(useIndex) == token
    
     proc expectToken(token: Token) =
         if not hasToken(token):
-            error(fmt"invalid token: {currentToken()} at {index}")
+            error(fmt"invalid token: {currentToken()} at {index}. expected {token}.")
 
     proc consumeToken(token: Token) =
         expectToken(token)
@@ -167,6 +172,7 @@ proc parse*(tokens: seq[Token]): Ast =
     proc parseNum(): Ast
     proc parseString(): Ast
     proc parseType(): Ast
+    proc parseAnonFunction(): Ast
 
     proc parseProgram(): Ast =
         var lines: seq[Ast]
@@ -255,6 +261,7 @@ proc parse*(tokens: seq[Token]): Ast =
             while not hasToken(punc"}"):
                 body.add(parseLine())
             next()
+            consumeToken(punc";")
         elif hasToken(punc";"):
             body = @[anyAst]
             next()
@@ -379,6 +386,8 @@ proc parse*(tokens: seq[Token]): Ast =
             firstExpression = parseId()
         elif hasToken(op"@"):
             firstExpression = parseExtern()
+        elif hasToken(punc"{"):
+            firstExpression = parseAnonFunction()
         else:
             error(fmt"invalid expression at {index}");
 
@@ -505,25 +514,85 @@ proc parse*(tokens: seq[Token]): Ast =
         elif hasToken(alpha"void"):
             next()
             result = Ast(astType: AstType.Type, typeType: TypeExpression(typeExpressionType: TypeExpressionType.Void))
-        elif hasToken(alpha"fn"):
+        elif hasToken(punc"("):
             next()
-            consumeToken(punc"(")
-            let params = parseJoined(parseType, punc",", punc")").map(ast => ast.typeType)
+            result = parseType()
+            if hasToken(punc","):
+                next()
+                let params = parseJoined(parseType, punc",", punc")").map(ast => ast.typeType)
+                next()
+                consumeToken(op"->")
+                let returnType = parseType()
+                result = Ast(
+                    astType: AstType.Type, 
+                    typeType: TypeExpression(
+                        typeExpressionType: TypeExpressionType.Function,
+                        params: @[result.typeType] & params,
+                        returnType: returnType.typeType))
+            else:
+                consumeToken(punc")")
+        else:
+            error(fmt"invalid type: {currentToken()}")
+            nil
+
+        if hasToken(op"->"):
             next()
-            consumeToken(op":")
-            let returnType = parseType().typeType
+            let returnType = parseType()
             result = Ast(
                 astType: AstType.Type, 
                 typeType: TypeExpression(
                     typeExpressionType: TypeExpressionType.Function,
-                    params: params,
-                    returnType: returnType))
-        elif hasToken(punc"("):
-            next()
-            result = parseType()
-            consumeToken(punc")")
-        else:
-            error(fmt"invalid type: {currentToken()}")
+                    params: @[result.typeType],
+                    returnType: returnType.typeType))
+    
+    # proc anonFunctionHasParams(): bool =
+    #     var tempIndex = index
+    #     result = true
+    #     while result and not hasToken(op":"):
+    #         if not (
+    #             currentToken(tempIndex).tokenType == TokenType.Alpha and (hasToken(punc",", tempIndex + 1) or hasToken(op"=>", tempIndex + 1))
+    #         ): result = false
+    #         inc tempIndex, 2
+    
+    proc parseAnonFunction(): Ast =
+        consumeToken(punc"{")
+
+        var params: seq[tuple[name: Ast, `type`: Ast]]
+        while not hasToken(op":"):
+            params.add(parseIdTypePair())
+            if not hasToken(op":"):
+                consumeToken(punc",")
+        next()
+        var returnType = parseType()
+        
+        consumeToken(op"=>")
+
+        for param in params:
+            typeTable[param[0].name] = param[1].typeType
+        
+        typeTable["result"] = returnType.typeType
+
+        var lines: seq[Ast]
+        while not hasToken(punc"}"):
+            lines.add(parseLine())
+        next()
+
+        for param in params:
+            typeTable.del(param[0].name)
+
+        typeTable.del("result")
+
+        result = Ast(
+            astType: AstType.AnonFunction,
+            anonFunctionParams: params,
+            anonReturnType: returnType,
+            anonBody: lines,
+            typeExpression: TypeExpression(
+                typeExpressionType: TypeExpressionType.Function,
+                params: params.map(param => param[1].typeType),
+                returnType: returnType.typeType,
+            )
+        )
 
     result = parseProgram()
 
@@ -554,6 +623,17 @@ func `$`*(ast: Ast): string =
             result = fmt"""{ast.params[0].stringValue}"""
         else:
             result = fmt"""{ast.function}({ast.params.join(", ")})"""
+    of AstType.AnonFunction:
+        var paramStrings: seq[string]
+        for (name, _) in ast.anonFunctionParams:
+            paramStrings.add(fmt"{name}")
+        result = fmt"""function ({paramStrings.map(param => param[0]).join(", ")})""" 
+        result &= "{"
+        result &= "let result;"
+        for line in ast.anonBody:
+            result &= $line & ";"
+        result &= "return result;"
+        result &= "}"
     of AstType.Id:
         for c in ast.name:
             if not (('a' <= c and c <= 'z') or ('A' <= c and c <= 'Z')):
@@ -576,7 +656,7 @@ func `$`*(ast: Ast): string =
         result &= "return result;"
         result &= "}"
     of AstType.Type:
-        result = "";
+        result = $ast.typeType;
     of AstType.Any:
         result = ""
     of AstType.Extern:
