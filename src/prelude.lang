@@ -1,7 +1,7 @@
-let printNum = @{"console.log" : number -> void};
-let printStr = @{"console.log" : string -> void};
-let toString = @{"x => x.toString()" : number -> string};
-let `*` = @{"(x, y) => x * y": (number, number) -> number};
-let `/` = @{"(x, y) => x / y": (number, number) -> number};
-let `+` = @{"(x, y) => x + y": (number, number) -> number};
-let `-` = @{"(x, y) => x - y": (number, number) -> number};
+let printNum: number -> void = @{"console.log"};
+let printStr: string -> void = @{"console.log"};
+let toString: number -> string = @{"x => x.toString()" };
+let `*`: (number, number) -> number = @{"(x, y) => x * y"};
+let `/`: (number, number) -> number = @{"(x, y) => x / y"};
+let `+`: (number, number) -> number = @{"(x, y) => x + y"};
+let `-`: (number, number) -> number = @{"(x, y) => x - y"};
