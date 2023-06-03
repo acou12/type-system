@@ -1,4 +1,5 @@
 import std/strformat
+import std/strutils
 
 type TokenType* = enum
     Alpha,
@@ -8,10 +9,26 @@ type TokenType* = enum
     White,
     Underscore,
     String,
+    Comment,
 
 type Token* = object
     tokenType*: TokenType
+    index*: int
     value*: string
+
+proc getLineFromIndex*(index: int, source: string): string = 
+    var back = index;
+    while not (back == low(source) or source[back] == '\n'):
+        dec back
+
+    var front = index;
+    while not (front == high(source) or source[front] == '\n'):
+        inc front
+    
+    if front == high(source):
+        inc front
+
+    source[back..<front] & '\n' & ' '.repeat(index - back - 1) & "^"
 
 proc lexMultipleByFunction(
     accept: proc (c: char): bool,
@@ -24,7 +41,8 @@ proc lexMultipleByFunction(
                 index += 1
             tokens.add(
                 Token(
-                    value: source[firstIndex..<index], tokenType: tokenType
+                    value: source[firstIndex..<index], tokenType: tokenType,
+                    index: index,
                 )
             )
             true
@@ -37,7 +55,8 @@ proc lexSingleByFunction(
         if accept(source[index]):
             tokens.add(
                 Token(
-                    value: source[index..index], tokenType: tokenType
+                    value: source[index..index], tokenType: tokenType,
+                    index: index,
                 )
             )
             index += 1
@@ -60,11 +79,11 @@ proc lexString(source: string, index: var int, tokens: var seq[Token]): bool =
         while index < source.len and source[index] != '"':
             inc index
         if index >= source.len:
-            echo "unmatched string."
-            quit(1)
+            raise newException(OSError, "unmatched string.\n\n" & getLineFromIndex(index, source))
         tokens.add(
             Token(
-                value: source[startIndex..<index], tokenType: TokenType.String
+                value: source[startIndex..<index], tokenType: TokenType.String,
+                index: index,
             )
         )
         inc index
@@ -79,20 +98,41 @@ proc lexBackquotedId(source: string, index: var int, tokens: var seq[Token]): bo
         while index < source.len and source[index] != '`':
             inc index
         if index >= source.len:
-            echo "unmatched backquote id."
-            quit(1)
+            raise newException(OSError, "unmatched backquote id.\n\n" & getLineFromIndex(index, source))
         tokens.add(
             Token(
-                value: source[startIndex..<index], tokenType: TokenType.Alpha
+                value: source[startIndex..<index], tokenType: TokenType.Alpha,
+                index: index,
             )
         )
         inc index
     else:
         result = false
 
+proc lexComment(source: string, index: var int, tokens: var seq[Token]): bool =
+    template isComment: bool = source[index..<index+2] == "//"
+    if source.len - index >= 2 and isComment():
+        result = true
+        inc index, 2
+        let startIndex = index
+        while source.len - index >= 2 and not isComment():
+            inc index
+        if isComment():
+            tokens.add(
+                Token(
+                    value: source[startIndex..<index], tokenType: TokenType.Comment,
+                    index: startIndex
+                )
+            )
+            inc index, 2
+        else:
+            raise newException(OSError, "unclosed comment.\n\n" & getLineFromIndex(startIndex, source))
+    else:
+        result = false
 
 proc lex*(source: string): seq[Token] =
     let lexers = @[
+        lexComment,
         lexOp,
         lexAlpha,
         lexPunc,
@@ -110,8 +150,7 @@ proc lex*(source: string): seq[Token] =
                 found = true
                 break
         if not found:
-            echo "lex error. invalid token at ", index
-            quit(1)
+            raise newException(OSError, "lex error. invalid token at " & $index & "\n\n" & getLineFromIndex(index, source))
 
 proc `$`*(token: Token): string =
     &"\"{token.value}\": {token.tokenType}"

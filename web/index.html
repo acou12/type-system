@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/style.css">
+    <script src="/compile.js"></script>
+    <title>Online Compiler</title>
+</head>
+<body>
+    <div class="grid">
+        <textarea name="code" class="code" cols="30" rows="10" placeholder="Write your code here..."></textarea>
+        <div class="output">
+            <button>run</button>
+            <pre>Output will show up here.</pre>
+        </div>
+    </div>
+    <script>
+        (async () => {
+            const demo = await fetch('/demo.lang').then(it => it.text());
+            const code = document.querySelector('.code');
+            code.value = demo;
+            const outputPre = document.querySelector('.output pre')
+            const button = document.querySelector('button');
+            button.addEventListener('click', () => {
+                const { Field0: compiled, Field1: success } = compile(code.value);
+                console.log(compiled)
+                outputPre.innerHTML = `Output:\n\n`
+                if (success) {
+                    new Function(compiled).call({
+                        echo(x) {
+                            outputPre.innerHTML += x + "\n";
+                        }
+                    })
+                } else {
+                    outputPre.innerHTML += compiled
+                }
+            });
+        })();
+    </script>
+</body>
+</html>

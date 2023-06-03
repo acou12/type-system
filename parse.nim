@@ -97,34 +97,28 @@ func `~=`(te1: TypeExpression, te2: TypeExpression): bool =
 template `!~=`(te1: TypeExpression, te2: TypeExpression): bool =
     not (te1 ~= te2)
 
-proc parse*(tokens: seq[Token]): Ast =
-    var index = 0
 
+proc parse*(tokens: seq[Token], source: string): Ast =
+    var index = 0
     var typeTable = initTable[string, TypeExpression]()
 
     template currentToken(useIndex = index): Token = tokens[useINdex]
 
     proc error(message: string) =
-        echo ""
-        echo fmt"err: {message}"
-        echo ""
-        var s = ""
-        for i, token in pairs(tokens):
-            if i == index:
-                s &= ">>> "
-                s &= token.value
-                s &= " <<< "
-            else:
-                s &= token.value
-                s &= " "
-        echo s
-        echo getStackTrace()
-        quit(1)
+        var error: string
+        error &= fmt("\nerr: {message}\n")
+        error &= fmt("at {currentToken(index - 1).index}\n\n")
+        error &= getLineFromIndex(currentToken(index - 1).index, source)
+        error &= "\n\n"
+        error &= getStackTrace()
+        raise newException(OSError, error)
 
     template next = index += 1
     template moreTokens: bool = index < tokens.len
 
-    template hasToken(token: Token, useIndex = index): bool = currentToken(useIndex) == token
+    template hasToken(token: Token, useIndex = index): bool =
+        currentToken(useIndex).tokenType == token.tokenType and
+        currentToken(useIndex).value     == token.value
    
     proc expectToken(token: Token) =
         if not hasToken(token):
@@ -252,6 +246,16 @@ proc parse*(tokens: seq[Token]): Ast =
         
         typeTable["result"] = returnType.typeType
 
+        var paramTypes: seq[TypeExpression]
+        for (_, `type`) in params:
+            paramTypes.add(`type`.typeType)
+
+        typeTable[lhs.name] = TypeExpression(
+            typeExpressionType: TypeExpressionType.Function,
+            params: paramTypes,
+            returnType: returnType.typeType
+        )
+
         var body: seq[Ast]
         if hasToken(op"="):
             next()
@@ -270,16 +274,6 @@ proc parse*(tokens: seq[Token]): Ast =
             typeTable.del(name.name)
 
         typeTable.del("result")
-
-        var paramTypes: seq[TypeExpression]
-        for (_, `type`) in params:
-            paramTypes.add(`type`.typeType)
-
-        typeTable[lhs.name] = TypeExpression(
-            typeExpressionType: TypeExpressionType.Function,
-            params: paramTypes,
-            returnType: returnType.typeType
-        )
 
         result = Ast(
             astType: AstType.Function,
@@ -323,6 +317,12 @@ proc parse*(tokens: seq[Token]): Ast =
 
         typeTable["result"] = returnType.typeType
 
+        typeTable[operator.value] = TypeExpression(
+            typeExpressionType: TypeExpressionType.Function,
+            params: @[firstType.typeType, secondType.typeType],
+            returnType: returnType.typeType
+        )
+
         var body: seq[Ast]
         if hasToken(op"="):
             next()
@@ -340,12 +340,6 @@ proc parse*(tokens: seq[Token]): Ast =
         typeTable.del(firstId.name)
         typeTable.del(secondId.name)
         typeTable.del("result")
-
-        typeTable[operator.value] = TypeExpression(
-            typeExpressionType: TypeExpressionType.Function,
-            params: @[firstType.typeType, secondType.typeType],
-            returnType: returnType.typeType
-        )
 
         result = Ast(
             astType: AstType.Function,
@@ -631,10 +625,7 @@ func `$`*(ast: Ast): string =
     of AstType.Reassignment:
         result = fmt"{ast.reassignmentLhs} = {ast.reassignmentRhs}"
     of AstType.FunctionCall:
-        if ast.function.name == "js" and ast.params[0].astType == AstType.StringLiteral:
-            result = fmt"""{ast.params[0].stringValue}"""
-        else:
-            result = fmt"""{ast.function}({ast.params.join(", ")})"""
+        result = fmt"""{ast.function}({ast.params.join(", ")})"""
     of AstType.AnonFunction:
         var paramStrings: seq[string]
         for name in ast.anonFunctionParams:

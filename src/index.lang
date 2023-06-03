@@ -3,5 +3,5 @@ let printFOnTenTwen(f: (number, number) -> number): void = {
 };
 
 printFOnTenTwen({ x, y => 
-    result = (x + y) / 2;
+    result = (x + y) / 10;
 });

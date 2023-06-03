@@ -1,21 +1,11 @@
-import lex
-import parse
-
-import sugar
+import compile
 
 proc main =
-    let entryPointContents = readFile("src/prelude.lang") & readFile("src/index.lang")
-
-    var tokens = collect(
-        for token in lex(entryPointContents):
-            if token.tokenType != TokenType.White:
-                token)
-
-    let ast = parse(tokens)
+    let compiled, _ = compile(readFile("src/index.lang"))
 
     var file: File
     if open(file, "out.js", fmWrite):
-        file.write($ast)
+        file.write(compiled)
     else:
         echo "error writing."
 

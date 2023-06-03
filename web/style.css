@@ -1,0 +1,23 @@
+body {
+    margin: 0;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: 50vw 25vw 25vw;
+}
+
+.code {
+    height: calc(100vh - 20px);
+    padding: 10px;
+}
+
+.output {
+    padding: 10px;
+}
+
+pre {
+    margin: 0;
+    margin-top: 10px;
+    overflow-wrap: break-word;
+}
