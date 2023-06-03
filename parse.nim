@@ -64,8 +64,7 @@ type Ast* = ref object
         returnType*: Ast
         body*: seq[Ast]
     of AstType.AnonFunction:
-        anonFunctionParams*: seq[tuple[name: Ast, `type`: Ast]]
-        anonReturnType*: Ast
+        anonFunctionParams*: seq[Ast]
         anonBody*: seq[Ast]
     of AstType.Type:
         typeType*: TypeExpression
@@ -90,7 +89,8 @@ func `~=`(te1: TypeExpression, te2: TypeExpression): bool =
         result = te2.typeExpressionType == TypeExpressionType.Void
     of TypeExpressionType.Function:
         result = te2.typeExpressionType == TypeExpressionType.Function and 
-                 te2.returnType ~= te1.returnType
+                 te1.returnType ~= te2.returnType and
+                 te1.params.len == te2.params.len
         for (p1, p2) in zip(te1.params, te2.params):
             result = result and p1 ~= p2
 
@@ -105,7 +105,9 @@ proc parse*(tokens: seq[Token]): Ast =
     template currentToken(useIndex = index): Token = tokens[useINdex]
 
     proc error(message: string) =
-        echo message
+        echo ""
+        echo fmt"err: {message}"
+        echo ""
         var s = ""
         for i, token in pairs(tokens):
             if i == index:
@@ -137,15 +139,10 @@ proc parse*(tokens: seq[Token]): Ast =
     template alpha(s: string): Token = Token(tokenType: TokenType.Alpha, value: s)
 
     proc parseJoined(parser: proc (): Ast, sepToken: Token, endToken: Token): seq[Ast] =
-        var first = true
         while not hasToken(endToken):
-        
-            if first:
-                first = false
-            else:
-                consumeToken(sepToken)
-
             result.add(parser())
+            if not hasToken(endToken):
+                consumeToken(sepToken)
 
     proc parseJoinedPairs(parser: proc (): tuple[name: Ast, `type`: Ast], sepToken: Token, endToken: Token): seq[tuple[name: Ast, `type`: Ast]] =
         var first = true
@@ -165,6 +162,7 @@ proc parse*(tokens: seq[Token]): Ast =
     proc parseFunctionAssignment(lhs: Ast): Ast
     proc parseOperatorAssignment(): Ast
     proc parseExpression(): Ast
+    proc parseExpressionOptAnonFunc(funcType: TypeExpression): Ast
     proc parseExtern(): Ast
     proc parseBoundId(): Ast
     proc parseId(): Ast
@@ -172,7 +170,7 @@ proc parse*(tokens: seq[Token]): Ast =
     proc parseNum(): Ast
     proc parseString(): Ast
     proc parseType(): Ast
-    proc parseAnonFunction(): Ast
+    proc parseAnonFunction(funcType: TypeExpression): Ast
 
     proc parseProgram(): Ast =
         var lines: seq[Ast]
@@ -332,6 +330,7 @@ proc parse*(tokens: seq[Token]): Ast =
             while not hasToken(punc"}"):
                 body.add(parseLine())
             next()
+            consumeToken(punc";")
         elif hasToken(punc";"):
             body = @[anyAst]
             next()
@@ -387,7 +386,7 @@ proc parse*(tokens: seq[Token]): Ast =
         elif hasToken(op"@"):
             firstExpression = parseExtern()
         elif hasToken(punc"{"):
-            firstExpression = parseAnonFunction()
+            error("anonymous functions are not allowed here.")
         else:
             error(fmt"invalid expression at {index}");
 
@@ -430,7 +429,19 @@ proc parse*(tokens: seq[Token]): Ast =
         elif hasToken(punc"("):
             next()
 
-            let params = parseJoined(parseExpression, punc",", punc")")
+            var params: seq[Ast]
+            var firstExpressionParamIndex = 0
+
+            while not hasToken(punc")"):
+                params.add(
+                    parseExpressionOptAnonFunc(firstExpression.typeExpression.params[firstExpressionParamIndex])
+                )
+                inc firstExpressionParamIndex
+
+                if not hasToken(punc")"):
+                    consumeToken(punc",")
+
+            consumeToken(punc")")
 
             let appType = functionApplicationType(firstExpression.typeExpression, params.map(param => param.typeExpression))
 
@@ -441,10 +452,15 @@ proc parse*(tokens: seq[Token]): Ast =
                 typeExpression: appType,
             )
 
-            consumeToken(punc")")
         else: 
             result = firstExpression
-    
+
+    proc parseExpressionOptAnonFunc(funcType: TypeExpression): Ast =
+        if hasToken(punc"{"):
+            parseAnonFunction(funcType)
+        else:
+            parseExpression()
+
     proc parseExtern(): Ast =
         next()
         consumeToken(punc"{")
@@ -554,23 +570,24 @@ proc parse*(tokens: seq[Token]): Ast =
     #         ): result = false
     #         inc tempIndex, 2
     
-    proc parseAnonFunction(): Ast =
+    proc parseAnonFunction(funcType: TypeExpression): Ast =
         consumeToken(punc"{")
 
-        var params: seq[tuple[name: Ast, `type`: Ast]]
-        while not hasToken(op":"):
-            params.add(parseIdTypePair())
-            if not hasToken(op":"):
+        let funcParams = funcType.params
+        var params: seq[Ast]
+        while not hasToken(op"=>"):
+            params.add(parseBoundId())
+            if not hasToken(op"=>"):
                 consumeToken(punc",")
         next()
-        var returnType = parseType()
-        
-        consumeToken(op"=>")
 
-        for param in params:
-            typeTable[param[0].name] = param[1].typeType
+        if params.len != funcParams.len:
+            error("anonymous function type mismatch.")
+
+        for i, param in pairs(params):
+            typeTable[param.name] = funcParams[i]
         
-        typeTable["result"] = returnType.typeType
+        typeTable["result"] = funcType.returnType
 
         var lines: seq[Ast]
         while not hasToken(punc"}"):
@@ -578,20 +595,15 @@ proc parse*(tokens: seq[Token]): Ast =
         next()
 
         for param in params:
-            typeTable.del(param[0].name)
+            typeTable.del(param.name)
 
         typeTable.del("result")
 
         result = Ast(
             astType: AstType.AnonFunction,
             anonFunctionParams: params,
-            anonReturnType: returnType,
             anonBody: lines,
-            typeExpression: TypeExpression(
-                typeExpressionType: TypeExpressionType.Function,
-                params: params.map(param => param[1].typeType),
-                returnType: returnType.typeType,
-            )
+            typeExpression: funcType,
         )
 
     result = parseProgram()
@@ -600,7 +612,7 @@ func `$`*(typeExpression: TypeExpression): string =
     case typeExpression.typeExpressionType:
     of TypeExpressionType.Number: "number"
     of TypeExpressionType.String: "string"
-    of TypeExpressionType.Function: fmt"""({typeExpression.params.join(" ")}) -> ({typeExpression.returnType})""" # TODO
+    of TypeExpressionType.Function: fmt"""({typeExpression.params.join(", ")}) -> ({typeExpression.returnType})""" # TODO
     of TypeExpressionType.Void: "void"
 
 proc encodeChar(c: char): string =
@@ -625,7 +637,7 @@ func `$`*(ast: Ast): string =
             result = fmt"""{ast.function}({ast.params.join(", ")})"""
     of AstType.AnonFunction:
         var paramStrings: seq[string]
-        for (name, _) in ast.anonFunctionParams:
+        for name in ast.anonFunctionParams:
             paramStrings.add(fmt"{name}")
         result = fmt"""function ({paramStrings.map(param => param[0]).join(", ")})""" 
         result &= "{"

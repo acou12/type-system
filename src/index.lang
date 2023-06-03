@@ -1,5 +1,7 @@
-let thing(f: (number, number) -> number): void = {
-    printNum(f(10, 10));
+let printFOnTenTwen(f: (number, number) -> number): void = {
+    printNum(f(10, 20));
 };
 
-thing({ x: number, y: number: number => result = x * y; });
+printFOnTenTwen({ x, y => 
+    result = (x + y) / 2;
+});
