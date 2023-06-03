@@ -17,18 +17,21 @@ type Token* = object
     value*: string
 
 proc getLineFromIndex*(index: int, source: string): string = 
-    var back = index;
-    while not (back == low(source) or source[back] == '\n'):
-        dec back
+    if not (0 <= index and index < source.len):
+        ""
+    else:
+        var back = index;
+        while not (back == low(source) or source[back] == '\n'):
+            dec back
 
-    var front = index;
-    while not (front == high(source) or source[front] == '\n'):
-        inc front
-    
-    if front == high(source):
-        inc front
+        var front = index;
+        while not (front == high(source) or source[front] == '\n'):
+            inc front
+        
+        if front == high(source):
+            inc front
 
-    source[back..<front] & '\n' & ' '.repeat(index - back - 1) & "^"
+        source[back..<front] & '\n' & ' '.repeat(index - back) & "^"
 
 proc lexMultipleByFunction(
     accept: proc (c: char): bool,

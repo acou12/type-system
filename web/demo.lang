@@ -42,4 +42,3 @@ printStr("");
 
 // anonymous functions //
 printStr("septice 10 is " & toString(runFnOnTen({ x => result = x * 7; })));
-

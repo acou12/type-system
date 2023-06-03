@@ -102,25 +102,35 @@ proc parse*(tokens: seq[Token], source: string): Ast =
     var index = 0
     var typeTable = initTable[string, TypeExpression]()
 
-    template currentToken(useIndex = index): Token = tokens[useINdex]
+    proc currentToken(useIndex = index): Token
 
-    proc error(message: string) =
+    proc error(message: string, lineHint = true) =
         var error: string
         error &= fmt("\nerr: {message}\n")
-        error &= fmt("at {currentToken(index - 1).index}\n\n")
-        error &= getLineFromIndex(currentToken(index - 1).index, source)
+        if lineHint:
+            error &= getLineFromIndex(currentToken(index - 1).index, source)
         error &= "\n\n"
         error &= getStackTrace()
         raise newException(OSError, error)
 
+    proc errorIfStreamEnd(useIndex = index) =
+        if useIndex >= tokens.len:
+            error("unexpected end of token stream. try a semicolon?", lineHint = false)
+
+    proc currentToken(useIndex = index): Token = 
+        errorIfStreamEnd()
+        tokens[useIndex]
+
     template next = index += 1
     template moreTokens: bool = index < tokens.len
 
-    template hasToken(token: Token, useIndex = index): bool =
+    proc hasToken(token: Token, useIndex = index): bool =
+        errorIfStreamEnd()
         currentToken(useIndex).tokenType == token.tokenType and
         currentToken(useIndex).value     == token.value
    
     proc expectToken(token: Token) =
+        errorIfStreamEnd()
         if not hasToken(token):
             error(fmt"invalid token: {currentToken()} at {index}. expected {token}.")
 
@@ -218,7 +228,7 @@ proc parse*(tokens: seq[Token], source: string): Ast =
         else:
             error("invalid assignment.")
 
-        typeTable[lhs.name] = rhs.typeExpression
+        typeTable[lhs.name] = lhsType.typeType
 
         result = Ast(
             astType: AstType.Assignment,
