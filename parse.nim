@@ -209,6 +209,14 @@ proc parse*(tokens: seq[Token], source: string): Ast =
             result = parseOperatorAssignment()
         else:
             error("invalid assignment.")
+    
+    template `?|`[T](x: ref T, y: ref T): ref T =
+        if x.isNil: y
+        else: x
+
+    template `?&`[T](x: ref T, y: ref T): ref T =
+        if x.isNil: nil
+        else: y
         
     proc parseVariableAssignment(lhs: Ast): Ast =
         var lhsType: Ast
@@ -228,7 +236,7 @@ proc parse*(tokens: seq[Token], source: string): Ast =
         else:
             error("invalid assignment.")
 
-        typeTable[lhs.name] = lhsType.typeType
+        typeTable[lhs.name] = rhs.typeExpression ?| lhsType.typeType
 
         result = Ast(
             astType: AstType.Assignment,
@@ -391,6 +399,12 @@ proc parse*(tokens: seq[Token], source: string): Ast =
             firstExpression = parseExtern()
         elif hasToken(punc"{"):
             error("anonymous functions are not allowed here.")
+        elif hasToken(Token(tokenType: TokenType.ExpressionComment, value: "//")):
+            next()
+            discard parseExpression()
+            firstExpression = parseExpression()
+        elif hasToken(punc";"):
+            firstExpression = anyAst;
         else:
             error(fmt"invalid expression at {index}");
 
@@ -671,6 +685,6 @@ func `$`*(ast: Ast): string =
     of AstType.Type:
         result = $ast.typeType;
     of AstType.Any:
-        result = ""
+        result = "undefined"
     of AstType.Extern:
         result = ast.externCode.stringValue

@@ -11,7 +11,7 @@ proc compile*(source: cstring): (cstring, bool) {.exportc} =
     try:
         let tokens = collect(
             for token in lex(contents):
-                if not (token.tokenType in { TokenType.White, TokenType.Comment }):
+                if not (token.tokenType in { TokenType.White, TokenType.MultilineComment }):
                     token)
         
         let ast = parse(tokens, contents)

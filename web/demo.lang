@@ -1,12 +1,14 @@
-let x: number = 12; // explicit //
-let y = 26;         // or inferred //
+let x: number = 12; /* explicit */
+let y = 26;         /* or inferred */
 
 let z = x + y;
 
-printStr("z = " & toString(z)); // & is string concat //
+printStr("z = " & toString(z)); /* & is string concat */
 
-// extern statement, used for importing js code.
-   specifying the type explicitly is required. //
+/* multiline comments using /* this syntax */ (can be nested!) */
+
+/* extern statement, used for importing js code.
+   specifying the type explicitly is required. */
 let name = @{"prompt" : string -> string}("enter your name!");
 
 printStr("");
@@ -15,24 +17,24 @@ printStr("hello, " & name & "!");
 
 printStr("");
 
-// function declarations //
+/* function declarations */
 let twice(a: number): number = {
-    result = a * 2; // `result` is implicitly created and is 
+    result = a * 2; /* `result` is implicitly created and is 
                        the primary means through which 
-                       values are returned. // 
+                       values are returned. */ 
 };
 
 printStr("twice 20 is " & toString(twice(20)));
 
-// try uncommenting to test the type-checker //
-//
+/* try uncommenting to test the type-checker */
+/*
 
 let a = 1 + "h";
 printNum(twice("2"));
 printStr(twice(10));
 printNum(twice(10, 6));
 
-//
+*/
 
 let runFnOnTen(fn: number -> number): number = {
     result = fn(10);
@@ -40,5 +42,10 @@ let runFnOnTen(fn: number -> number): number = {
 
 printStr("");
 
-// anonymous functions //
+/* anonymous functions */
 printStr("septice 10 is " & toString(runFnOnTen({ x => result = x * 7; })));
+
+/* expression comments */
+printNum(
+    // twice(15) twice(10)
+);

@@ -9,7 +9,8 @@ type TokenType* = enum
     White,
     Underscore,
     String,
-    Comment,
+    MultilineComment,
+    ExpressionComment,
 
 type Token* = object
     tokenType*: TokenType
@@ -112,30 +113,56 @@ proc lexBackquotedId(source: string, index: var int, tokens: var seq[Token]): bo
     else:
         result = false
 
-proc lexComment(source: string, index: var int, tokens: var seq[Token]): bool =
-    template isComment: bool = source[index..<index+2] == "//"
-    if source.len - index >= 2 and isComment():
+proc lexExpressionComment(source: string, index: var int, tokens: var seq[Token]): bool =
+    if source.len - index >= 2 and source[index..<index+2] == "//":
+        tokens.add(
+            Token(
+                value: "//", tokenType: TokenType.ExpressionComment,
+                index: index
+            )
+        )
+        inc index, 2
+        true
+    else:
+        false
+
+proc lexMultiLineComment(source: string, index: var int, tokens: var seq[Token]): bool =
+    template isOpenComment: bool = source[index..<index+2] == "/*"
+    template isCloseComment: bool = source[index..<index+2] == "*/"
+    if source.len - index >= 2 and isOpenComment():
         result = true
         inc index, 2
         let startIndex = index
-        while source.len - index >= 2 and not isComment():
-            inc index
-        if isComment():
+        var innerDepth = 0
+        var startCommentStack = @[startIndex]
+        while source.len - index >= 2 and (not isCloseComment() or innerDepth != 0):
+            if isOpenComment():
+                inc innerDepth
+                startCommentStack.add(index)
+                inc index, 2
+            elif isCloseComment():
+                dec innerDepth
+                discard startCommentStack.pop()
+                inc index, 2
+            else:
+                inc index
+        if source.len - index >= 2:
             tokens.add(
                 Token(
-                    value: source[startIndex..<index], tokenType: TokenType.Comment,
+                    value: source[startIndex..<index], tokenType: TokenType.MultiLineComment,
                     index: startIndex
                 )
             )
             inc index, 2
         else:
-            raise newException(OSError, "unclosed comment.\n\n" & getLineFromIndex(startIndex, source))
+            raise newException(OSError, "unclosed comment.\n\n" & getLineFromIndex(startCommentStack.pop(), source))
     else:
         result = false
 
 proc lex*(source: string): seq[Token] =
     let lexers = @[
-        lexComment,
+        lexMultiLineComment,
+        lexExpressionComment,
         lexOp,
         lexAlpha,
         lexPunc,

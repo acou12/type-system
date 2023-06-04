@@ -1,7 +1,46 @@
-let printFOnTenTwen(f: (number, number) -> number): void = {
-    printNum(f(10, 20));
+let x: number = 12; /* explicit */
+let y = 26;         /* or inferred */
+
+let z = x + y;
+
+printStr("z = " & toString(z)); /* & is string concat */
+
+/* multiline comments using /* this /* syntax */ (can be nested!) */
+
+/* extern statement, used for importing js code.
+   specifying the type explicitly is required. */
+let name = @{"prompt" : string -> string}("enter your name!");
+
+printStr("");
+
+printStr("hello, " & name & "!");
+
+printStr("");
+
+/* function declarations */
+let twice(a: number): number = {
+    result = a * 2; /* `result` is implicitly created and is 
+                       the primary means through which 
+                       values are returned. */ 
 };
 
-printFOnTenTwen({ x, y => 
-    result = (x + y) / 10;
-});
+printStr("twice 20 is " & toString(twice(20)));
+
+/* try uncommenting to test the type-checker */
+/*
+
+// let a = 1 + "h";
+// printNum(twice("2"));
+// printStr(twice(10));
+// printNum(twice(10, 6));
+
+*/
+
+let runFnOnTen(fn: number -> number): number = {
+    result = fn(10);
+};
+
+printStr("");
+
+/* anonymous functions */
+printStr("septice 10 is " & toString(runFnOnTen({ x => result = x * 7; })));
